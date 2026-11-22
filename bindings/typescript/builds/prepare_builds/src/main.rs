@@ -111,8 +111,9 @@ impl BuildValues {
                 _ => vec![],
             },
             wasm_pack_args: match args.feature_set {
-                // wasm-bindgen-rayon's workers re-import the module by URL: needs the `web` target.
-                FeatureSet::Threads => "--target web -- -Z build-std=panic_abort,std".to_string(),
+                // wasm-bindgen-rayon's workers re-import the module by URL: needs the `web` target. The crate
+                // path (`.`) must be explicit, or wasm-pack 0.12 takes `-Z` after `--` as the path.
+                FeatureSet::Threads => "--target web . -- -Z build-std=panic_abort,std".to_string(),
                 _ => String::new(),
             },
             threads: matches!(args.feature_set, FeatureSet::Threads),
