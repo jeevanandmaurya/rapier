@@ -34,6 +34,9 @@ pub enum FeatureSet {
     NonDeterministic,
     Deterministic,
     Simd,
+    /// Multi-threaded (rayon over Web Workers) + SIMD. Needs nightly Rust (`-Z build-std`) at build
+    /// time and a cross-origin-isolated page at runtime. Opt-in: not in `prepare_all_projects.sh`.
+    Threads,
 }
 
 /// Values to use when creating the new build folder.
@@ -47,6 +50,10 @@ pub struct BuildValues {
     pub additional_rust_flags: String,
     pub additional_wasm_opt_flags: Vec<String>,
     pub js_package_name: String,
+    /// Extra arguments for `wasm-pack build` (anything after `--` goes to cargo).
+    pub wasm_pack_args: String,
+    /// Whether this is the multi-threaded variant (wasm-bindgen-rayon + a thread-pool `init()`).
+    pub threads: bool,
 }
 
 impl BuildValues {
@@ -61,11 +68,15 @@ impl BuildValues {
             // SIMD is always on in rapier itself; the wasm build only differs by
             // the `+simd128` target feature and wasm-opt flags set below.
             FeatureSet::Simd => vec![],
+            // `unsync-callbacks`: JS hooks and event handlers are not Send/Sync. Worker threads then
+            // get a no-op hook, and pairs with user hooks are processed on the calling thread only.
+            FeatureSet::Threads => vec!["parallel", "unsync-callbacks"],
         };
         let js_package_name = match args.feature_set {
             FeatureSet::NonDeterministic => format!("rapier{dim}d"),
             FeatureSet::Deterministic => format!("rapier{dim}d-deterministic"),
             FeatureSet::Simd => format!("rapier{dim}d-simd"),
+            FeatureSet::Threads => format!("rapier{dim}d-threads"),
         };
 
         let root: PathBuf = env!("CARGO_MANIFEST_DIR").into();
@@ -77,12 +88,34 @@ impl BuildValues {
             target_dir: root.parent().unwrap().join(&js_package_name).into(),
             additional_rust_flags: match args.feature_set {
                 FeatureSet::Simd => "RUSTFLAGS='-C target-feature=+simd128'".to_string(),
+                // Atomics + shared memory for threads. The release profile's `strip = true` would drop
+                // the `target_features` section wasm-bindgen reads to emit threaded glue, so only
+                // debuginfo is stripped here. LTO is enabled for this build.
+                FeatureSet::Threads => concat!(
+                    "RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN:-nightly} ",
+                    "CARGO_PROFILE_RELEASE_STRIP=debuginfo CARGO_PROFILE_RELEASE_LTO=fat ",
+                    "RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128 ",
+                    "-C link-arg=--shared-memory -C link-arg=--max-memory=4294967296 ",
+                    "-C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls ",
+                    "-C link-arg=--export=__tls_size -C link-arg=--export=__tls_align ",
+                    "-C link-arg=--export=__tls_base'"
+                )
+                .to_string(),
                 _ => "".to_string(),
             },
             additional_wasm_opt_flags: match args.feature_set {
                 FeatureSet::Simd => vec!["--enable-simd".to_string()],
+                FeatureSet::Threads => ["--enable-simd", "--enable-threads", "--enable-mutable-globals"]
+                    .map(String::from)
+                    .to_vec(),
                 _ => vec![],
             },
+            wasm_pack_args: match args.feature_set {
+                // wasm-bindgen-rayon's workers re-import the module by URL: needs the `web` target.
+                FeatureSet::Threads => "--target web -- -Z build-std=panic_abort,std".to_string(),
+                _ => String::new(),
+            },
+            threads: matches!(args.feature_set, FeatureSet::Threads),
             js_package_name,
         }
     }
@@ -137,6 +170,8 @@ fn process_templates(build_values: &BuildValues) -> std::io::Result<()> {
         &build_values.additional_wasm_opt_flags,
     );
     context.insert("js_package_name", &build_values.js_package_name);
+    context.insert("wasm_pack_args", &build_values.wasm_pack_args);
+    context.insert("threads", &build_values.threads);
 
     let tera = match Tera::new(target_dir.join("**/*.tera").to_str().unwrap()) {
         Ok(t) => t,
