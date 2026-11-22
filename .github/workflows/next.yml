@@ -68,7 +68,9 @@ jobs:
         if: failure()
         run: |
           [ -f "$RUNNER_TEMP/ci.log" ] || exit 0
-          msg=$(sed -E 's/[[0-9;]*m//g' "$RUNNER_TEMP/ci.log" | grep -vE '^s+(Compiling|Downloaded|Downloading|Checking|Fresh) ' | tail -n 80 | sed -e 's/%/%25/g' -e 's//%0D/g' | awk 'BEGIN{ORS="%0A"} {print}')
+          msg=$(sed -E 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/ci.log" \
+            | grep -vE '^\s+(Compiling|Downloaded|Downloading|Checking|Fresh) ' \
+            | tail -n 80 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN{ORS="%0A"} {print}')
           echo "::error title=next build failed (last log lines)::$msg"
 
       - uses: actions/upload-artifact@v7.0.2
