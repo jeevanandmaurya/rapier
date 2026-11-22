@@ -12,8 +12,12 @@ license = "Apache-2.0"
 edition = "2018"
 
 [features]
-default = ["dim{{ dimension }}"]
+default = ["dim{{ dimension }}"{% if threads %}, "threads"{% endif %}]
 dim{{ dimension }} = []
+{%- if threads %}
+# Multi-threaded build: exposes `initThreadPool` (rayon over Web Workers).
+threads = ["dep:wasm-bindgen-rayon"]
+{%- endif %}
 
 [lib]
 name = "rapier_wasm{{ dimension }}d"
@@ -45,6 +49,9 @@ parry{{ dimension }}d = { version = "0.31", default-features = false, features =
     "required-features",
 ] }
 ref-cast = "1"
+{%- if threads %}
+wasm-bindgen-rayon = { version = "1.3", optional = true, features = ["no-bundler"] }
+{%- endif %}
 wasm-bindgen = "0.2.109"
 js-sys = "0.3"
 nalgebra = "0.35"

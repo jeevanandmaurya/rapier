@@ -30,3 +30,8 @@ pub mod geometry;
 pub mod math;
 pub mod pipeline;
 pub mod utils;
+
+/// Starts the rayon thread pool (Web Workers sharing this module's memory). Only in the
+/// `threads` build; `init()` in `src.threads/init.ts` calls it.
+#[cfg(feature = "threads")]
+pub use wasm_bindgen_rayon::init_thread_pool;
