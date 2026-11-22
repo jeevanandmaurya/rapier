@@ -41,17 +41,21 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ env.NIGHTLY }}
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           for d in $(jq -r '.dims[]' ../../next/config.json); do
             cargo run -q -p prepare_builds -- -d "dim$d" -f threads
             (cd "builds/rapier${d}d-threads" && npm install --no-audit --no-fund && npm run build:wasm && npm run build:ts)
           done
 
       - name: Package as -next
-        run: node next/package.mjs
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          node next/package.mjs
 
       - name: Browser tests (full API vs official, threads, Vite dev + build)
         working-directory: next
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           npm install --no-audit --no-fund
           for d in dist/*; do npm install --no-save --no-audit --no-fund "./$d"; done
           npx playwright install --with-deps chromium
@@ -59,6 +63,13 @@ jobs:
           # comparisons are reported, not fatal. Crashes, threads and Vite still fail.
           node test/run.mjs --dims "$(jq -r '.dims | join(",")' config.json)" --threads 2 --strict 0
           node test/vite.mjs
+
+      - name: Report failure as an annotation (readable without signing in)
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/ci.log" ] || exit 0
+          msg=$(sed -E 's/[[0-9;]*m//g' "$RUNNER_TEMP/ci.log" | grep -vE '^s+(Compiling|Downloaded|Downloading|Checking|Fresh) ' | tail -n 80 | sed -e 's/%/%25/g' -e 's//%0D/g' | awk 'BEGIN{ORS="%0A"} {print}')
+          echo "::error title=next build failed (last log lines)::$msg"
 
       - uses: actions/upload-artifact@v7.0.2
         with:
