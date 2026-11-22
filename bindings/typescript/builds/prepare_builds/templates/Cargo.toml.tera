@@ -60,6 +60,11 @@ bincode = "1"
 palette = "0.7"
 
 [package.metadata.wasm-pack.profile.release]
+{%- if threads %}
+# wasm-pack's bundled wasm-opt is too old to parse the threaded module; build_rust.sh runs the one
+# from the `binaryen` npm package instead (with the flags below).
+wasm-opt = false
+{%- else %}
 # add -g to keep debug symbols
 wasm-opt = [
     '-O4',
@@ -71,4 +76,5 @@ wasm-opt = [
     '{{ flag }}',
     {%- endfor %}
 ]
+{%- endif %}
 #wasm-opt = ['-g']
