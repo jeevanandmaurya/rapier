@@ -4,6 +4,9 @@
 cargo clean
 
 {{ additional_rust_flags }} npx wasm-pack build{% if wasm_pack_args %} {{ wasm_pack_args }}{% endif %}
+{%- if threads %}
+npx wasm-opt pkg/rapier_wasm{{ dimension }}d_bg.wasm -o pkg/rapier_wasm{{ dimension }}d_bg.wasm -O4 --dce --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext{% for flag in additional_wasm_opt_flags %} {{ flag }}{% endfor %}
+{%- endif %}
 sed -i.bak 's#dimforge_rapier#@dimforge/rapier#g' pkg/package.json
 sed -i.bak 's/"rapier_wasm{{ dimension }}d_bg.wasm"/"*"/g' pkg/package.json
 (

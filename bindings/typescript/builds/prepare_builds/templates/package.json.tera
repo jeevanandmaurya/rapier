@@ -13,7 +13,8 @@
     },
     "//": "Better keep rimraf version in sync with wasm-pack, see https://github.com/rustwasm/wasm-pack/issues/1444",
     "devDependencies": {
-        "rimraf": "^3.0.2",
+        "rimraf": "^3.0.2",{% if threads %}
+        "binaryen": "^132.0.0",{% endif %}
         "typedoc": "^0.25.13",
         "typescript": "~5.4.5"
     },
