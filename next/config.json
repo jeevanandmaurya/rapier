@@ -1,0 +1,7 @@
+{
+  "npmScope": "@jeevanand",
+  "packageSuffix": "threads-next",
+  "dims": [3, 2],
+  "nightly": "nightly-2026-11-21",
+  "repository": "https://github.com/jeevanandmaurya/rapier"
+}

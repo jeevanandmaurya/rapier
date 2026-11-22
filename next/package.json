@@ -1,0 +1,11 @@
+{
+  "name": "rapier-threads-next-build",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@dimforge/rapier2d-simd-compat": "0.21.0",
+    "@dimforge/rapier3d-simd-compat": "0.21.0",
+    "playwright": "1.65.1",
+    "vite": "8.3.8"
+  }
+}

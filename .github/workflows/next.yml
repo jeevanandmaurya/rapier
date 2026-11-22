@@ -1,0 +1,80 @@
+name: Build, test and release -next
+
+# Lives only on the `next` branch (upstream Rapier + our feat/perf branches).
+# Builds the `threads` variant with Rapier's own generator, packages it as
+# @jeevanand/rapier{2,3}d-threads-next, runs the browser tests and publishes.
+
+on:
+  push:
+    branches: [next]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: next-release
+  cancel-in-progress: false
+
+jobs:
+  next:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NIGHTLY: nightly-2026-11-21
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Rust nightly (+ rust-src, wasm32)
+        run: |
+          rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src --target wasm32-unknown-unknown
+          rustup toolchain install stable --profile minimal
+
+      - name: Build the threads variant with Rapier's generator (2D + 3D)
+        working-directory: bindings/typescript
+        env:
+          RUSTUP_TOOLCHAIN: ${{ env.NIGHTLY }}
+        run: |
+          for d in $(jq -r '.dims[]' ../../next/config.json); do
+            cargo run -q -p prepare_builds -- -d "dim$d" -f threads
+            (cd "builds/rapier${d}d-threads" && npm install --no-audit --no-fund && npm run build:wasm && npm run build:ts)
+          done
+
+      - name: Package as -next
+        run: node next/package.mjs
+
+      - name: Browser tests (full API vs official, threads, Vite dev + build)
+        working-directory: next
+        run: |
+          npm install --no-audit --no-fund
+          for d in dist/*; do npm install --no-save --no-audit --no-fund "./$d"; done
+          npx playwright install --with-deps chromium
+          # strict 0: next can be newer than the last official release, so result
+          # comparisons are reported, not fatal. Crashes, threads and Vite still fail.
+          node test/run.mjs --dims "$(jq -r '.dims | join(",")' config.json)" --threads 2 --strict 0
+          node test/vite.mjs
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: threads-next-packages
+          path: next/dist/
+
+      - name: Publish to npm (dist-tag "next")
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          HAS_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+        working-directory: next
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then echo "::notice::NPM_TOKEN not set in this repo: skipping publish"; exit 0; fi
+          npm install -g npm@12
+          for d in dist/*; do
+            name=$(jq -r .name "$d/package.json"); version=$(jq -r .version "$d/package.json")
+            if npm view "$name@$version" version >/dev/null 2>&1; then echo "skip $name@$version"; continue; fi
+            (cd "$d" && npm publish --access public --provenance --tag next)
+          done
